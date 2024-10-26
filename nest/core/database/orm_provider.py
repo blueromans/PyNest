@@ -3,27 +3,20 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import Session, sessionmaker, declarative_base
 
 from nest.core.database.orm_config import AsyncConfigFactory, ConfigFactory
 
-
-class Base(DeclarativeBase):
-    """
-    Base class for ORM models.
-    """
-
-    pass
+Base = declarative_base()
 
 
 class BaseOrmProvider(ABC):
     def __init__(
-        self,
-        db_type: str = "postgresql",
-        config_params: dict = None,
-        async_mode: bool = False,
-        **kwargs,
+            self,
+            db_type: str = "postgresql",
+            config_params: dict = None,
+            **kwargs,
     ):
         """
         Initializes the BaseOrmProvider instance.
@@ -35,15 +28,15 @@ class BaseOrmProvider(ABC):
         """
         self.Base = Base
 
-        config_factory = AsyncConfigFactory if async_mode else ConfigFactory
+        config_factory = ConfigFactory
 
-        engine_function = create_async_engine if async_mode else create_engine
+        engine_function = create_engine
         if "engine_params" in kwargs:
             engine_params: Dict[str, Any] = kwargs.pop("engine_params")
         else:
             engine_params = {}
 
-        session_function = async_sessionmaker if async_mode else sessionmaker
+        session_function = sessionmaker
         if "session_params" in kwargs:
             session_params: Dict[str, Any] = kwargs.pop("session_params")
         else:
@@ -89,42 +82,3 @@ class OrmProvider(BaseOrmProvider):
             raise e
         finally:
             db.close()
-
-
-class AsyncOrmProvider(BaseOrmProvider):
-    """
-    Asynchronous ORM provider.
-    """
-
-    def __init__(
-        self, db_type: str = "postgresql", config_params: dict = None, **kwargs
-    ):
-        echo = kwargs.get("echo", True)
-        kwargs["engine_params"] = dict(echo=echo)
-        kwargs["session_params"] = dict(expire_on_commit=False, class_=AsyncSession)
-        super().__init__(
-            db_type=db_type, config_params=config_params, async_mode=True, **kwargs
-        )
-
-    async def create_all(self):
-        async with self.engine.begin() as conn:
-            await conn.run_sync(self.Base.metadata.create_all)
-
-    async def drop_all(self):
-        async with self.engine.begin() as conn:
-            await conn.run_sync(self.Base.metadata.drop_all)
-
-    async def get_db(self) -> AsyncSession:
-        db = self.session()
-        try:
-            yield db
-        finally:
-            await db.close()
-
-    @asynccontextmanager
-    async def get_session(self) -> AsyncSession:
-        db = self.session()
-        try:
-            yield db
-        finally:
-            await db.close()
